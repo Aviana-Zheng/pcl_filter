@@ -1,9 +1,17 @@
 #include <iostream>
 #include <time.h>
 #include <pcl/io/pcd_io.h>
-#include <pcl/filters/random_sample.h>
-#include <pcl/filters/impl/random_sample.hpp>
 #include <pcl/visualization/cloud_viewer.h>
+#include <pcl/filters/sampling_surface_normal.h>
+#include <pcl/filters/impl/sampling_surface_normal.hpp>
+
+#include<pcl/point_types.h>
+#include<pcl/point_cloud.h>
+#include<pcl/kdtree/kdtree_flann.h>
+#include<pcl/kdtree/io.h>
+#include<vector>
+#include <pcl/features/normal_3d_omp.h>
+
 
 using namespace std;
 
@@ -17,15 +25,41 @@ int main()
 	pcl::PCDReader reader;
 	reader.read("1.pcd", *cloud);
 	cout << "\t\t<读入点云信息>\n" << *cloud << endl;
-    clock_t start_ms = clock();
+    //clock_t start_ms = clock();
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //滤波算法
-	cout << "->正在进行RandomSample..." << endl;
-	pcl::RandomSample<pcl::PointXYZ> rs;	//创建滤波器对象
-	rs.setInputCloud(cloud);				//设置待滤波点云
-	rs.setSample(2939);					//设置下采样点云的点数,同ApproximateVoxelGrid对比，设置2939个点
-	//rs.setSeed(1);						//设置随机函数种子点
-	rs.filter(*cloud_filtered);					//执行下采样滤波，保存滤波结果于cloud_sub
+	pcl::PointCloud<pcl::Normal>				cloud_normals;
+	pcl::PointCloud<pcl::PointNormal>		cloud_point_normals;
+    pcl::PointCloud<pcl::PointNormal>    Temp_cloud_point_normals;
+
+	//NormalEstimationOMP使用OpenMP标准并行估计每个3D点的局部表面属性，例如表面法线和曲率。
+	pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> normalEstimation;
+    normalEstimation.setRadiusSearch(0.02);
+    normalEstimation.setNumberOfThreads(12);
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree(new pcl::search::KdTree<pcl::PointXYZ>);
+    normalEstimation.setSearchMethod(kdtree);
+    normalEstimation.setInputCloud(cloud);
+	normalEstimation.compute(cloud_normals);
+
+    clock_t start_ms = clock();
+	cout << "->正在进行SamplingSurfaceNormal..." << endl;
+	
+	pcl::concatenateFields(*cloud, cloud_normals, cloud_point_normals);//SamplingSurfaceNormal处理的点云
+	
+	pcl::SamplingSurfaceNormal<pcl::PointNormal> ssn;		//创建滤波器对象
+	ssn.setInputCloud(cloud_point_normals.makeShared());
+    ssn.setSeed(1);    //Set seed of random function.设置随机函数的种子。
+    ssn.setSample(2);  //Set maximum number of samples in each grid 设置每个网格中的最大样本数
+    ssn.setRatio(0.1);  //Set ratio of points to be sampled in each grid设置每个网格中要采样的点的比例,比率越大点越多
+    ssn.filter(Temp_cloud_point_normals);
+
+	cloud_filtered->resize(Temp_cloud_point_normals.size());
+    for (size_t i = 0; i < Temp_cloud_point_normals.size(); i++)//显示关键点把XYZ另存
+    {
+        cloud_filtered->points[i].x = Temp_cloud_point_normals.points[i].x;
+        cloud_filtered->points[i].y = Temp_cloud_point_normals.points[i].y;
+        cloud_filtered->points[i].z = Temp_cloud_point_normals.points[i].z;
+    }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     clock_t end_ms = clock();
     std::cout << "filter time cost:" << double(end_ms - start_ms) / CLOCKS_PER_SEC << " s" << std::endl;
