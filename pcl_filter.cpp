@@ -1,137 +1,70 @@
-#include <pcl/point_types.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/visualization/cloud_viewer.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/passthrough.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/segmentation/extract_clusters.h>
-#include <pcl/ModelCoefficients.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/kdtree/kdtree.h>
-#include <pcl/segmentation/progressive_morphological_filter.h>
-#include <pcl/common/common.h>
-
-#include <time.h>
 #include <iostream>
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/visualization/cloud_viewer.h>
 
-#include "DBSCAN_simple.h"
-#include "DBSCAN_precomp.h"
-#include "DBSCAN_kdtree.h"
+using namespace std;
 
-// Visualization, [The CloudViewer](https://pcl.readthedocs.io/projects/tutorials/en/latest/cloud_viewer.html#cloud-viewer)
-template <typename PointCloudPtrType>
-void show_point_cloud(PointCloudPtrType cloud, std::string display_name) {
-  pcl::visualization::CloudViewer viewer(display_name);
-  viewer.showCloud(cloud);
-  while (!viewer.wasStopped())
-  {
-  }
-}
+int main()
+{
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);			//待滤波点云
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);	//滤波后点云
 
-int main(int argc, char** argv) {
-    // IO, [Reading Point Cloud data from PCD files](https://pcl.readthedocs.io/projects/tutorials/en/latest/reading_pcd.html#reading-pcd)
-    pcl::PCDReader reader;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>), cloud_f(new pcl::PointCloud<pcl::PointXYZ>);
-    reader.read("table_scene_lms400.pcd", *cloud);
-    std::cout << "PointCloud before filtering has: " << cloud->points.size () << " data points." << std::endl;
-    show_point_cloud(cloud, "original point cloud");
-    
-    // Filtering [Downsampling a PointCloud using a VoxelGrid filter](https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html#kdtree-search)
-    pcl::VoxelGrid<pcl::PointXYZ> vg;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);
-    vg.setInputCloud(cloud);
-    vg.setLeafSize(0.01f, 0.01f, 0.01f);
-    vg.filter(*cloud_filtered);
-    int downsampled_points_total_size = cloud_filtered->points.size();
-    std::cout << "PointCloud after filtering has: " << downsampled_points_total_size  << " data points." << std::endl;
-    show_point_cloud(cloud_filtered, "downsampled point cloud");
+	///读入点云数据
+	cout << "->正在读入点云..." << endl;
+	pcl::PCDReader reader;
+	reader.read("1.pcd", *cloud);
+	cout << "\t\t<读入点云信息>\n" << *cloud << endl;
 
-    // remove the biggest plane
-    // Segmentation, Ransac, [Plane model segmentation](https://pcl.readthedocs.io/projects/tutorials/en/latest/planar_segmentation.html#planar-segmentation)
-    pcl::SACSegmentation<pcl::PointXYZ> seg;
-    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane(new pcl::PointCloud<pcl::PointXYZ>);
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setMaxIterations(100);
-    seg.setDistanceThreshold(0.02);
-    seg.setInputCloud(cloud_filtered);
-    seg.segment(*inliers, *coefficients);
-    if (inliers->indices.size() == 0) {
-        std::cout << "Could not estimate a planar anymore." << std::endl;
-    } else {
-        // Filter, [Extracting indices from a PointCloud](https://pcl.readthedocs.io/projects/tutorials/en/latest/extract_indices.html#extract-indices)
-        pcl::ExtractIndices<pcl::PointXYZ> extract;
-        extract.setInputCloud(cloud_filtered);
-        extract.setIndices(inliers);
-        extract.setNegative(false);
-        extract.filter(*cloud_plane);
-        pcl::PointXYZ min, max;
-        pcl::getMinMax3D(*cloud_filtered, min, max);
-        double min_z = min.z;
-        std::cout << "ground plane size: " << cloud_plane->points.size()  << ", min_z:" << min_z << std::endl;
-        show_point_cloud(cloud_plane, "gound plane in point cloud");
-        // filter planar
-        extract.setNegative(true);
-        extract.filter(*cloud_f);
-        show_point_cloud(cloud_f, "plane filtered point cloud");
-        *cloud_filtered = *cloud_f;
-    }
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //滤波算法
+	///体素滤波器点云下采样
+	cout << "->正在体素下采样..." << endl;
+	pcl::VoxelGrid<pcl::PointXYZ> vg;		//创建滤波器对象
+	vg.setInputCloud(cloud);				//设置待滤波点云
+	vg.setLeafSize(0.05f, 0.05f, 0.05f);	//设置体素大小
+	vg.filter(*cloud_filtered);			//执行滤波，保存滤波结果于cloud_filtered
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // KdTree, for more information, please ref [How to use a KdTree to search](https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html#kdtree-search)
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-    tree->setInputCloud(cloud_filtered);
-    // Segmentation, [Euclidean Cluster Extraction](https://pcl.readthedocs.io/projects/tutorials/en/latest/cluster_extraction.html#cluster-extraction)
-    std::vector<pcl::PointIndices> cluster_indices;
-    clock_t start_ms = clock();
-    
-    // test 1. uncomment the following two lines to test the simple dbscan
-    // DBSCANSimpleCluster<pcl::PointXYZ> ec;
-    // ec.setCorePointMinPts(20);
 
-    // test 2. uncomment the following two lines to test the precomputed dbscan
-    // DBSCANPrecompCluster<pcl::PointXYZ>  ec;
-    // ec.setCorePointMinPts(20);
+	///保存下采样点云
+	cout << "->正在保存下采样点云..." << endl;
+	pcl::PCDWriter writer;
+	writer.write("sub.pcd", *cloud_filtered, true);
+	cout << "\t\t<保存点云信息>\n" << *cloud_filtered << endl;
 
-    // test 3. uncomment the following two lines to test the dbscan with Kdtree for accelerating
-    DBSCANKdtreeCluster<pcl::PointXYZ> ec;
-    ec.setCorePointMinPts(20);
+	//================================= 滤波前后对比可视化 ================================= ↓
 
-    // test 4. uncomment the following line to test the EuclideanClusterExtraction
-    // pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+	pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("befor_filtered and after_filtered"));
 
-    ec.setClusterTolerance(0.05);
-    ec.setMinClusterSize(100);
-    ec.setMaxClusterSize(25000);
-    ec.setSearchMethod(tree);
-    ec.setInputCloud(cloud_filtered);
-    ec.extract(cluster_indices);
-    
-    clock_t end_ms = clock();
-    std::cout << "cluster time cost:" << double(end_ms - start_ms) / CLOCKS_PER_SEC << " s" << std::endl;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZI>);
-    int j = 0;
-    // visualization, use indensity to show different color for each cluster.
-    for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); it++, j++) {
-        for(std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit) {
-            pcl::PointXYZI tmp;
-            tmp.x = cloud_filtered->points[*pit].x;
-            tmp.y = cloud_filtered->points[*pit].y;
-            tmp.z = cloud_filtered->points[*pit].z;
-            tmp.intensity = j%8;
-            cloud_clustered->points.push_back(tmp);
-        }
-    }
-    cloud_clustered->width = cloud_clustered->points.size();
-    cloud_clustered->height = 1;
-    show_point_cloud(cloud_clustered, "colored clusters of point cloud");
-    // IO, [Writing Point Cloud data to PCD files](https://pcl.readthedocs.io/projects/tutorials/en/latest/writing_pcd.html#writing-pcd)
-    pcl::PCDWriter writer;
-    writer.write<pcl::PointXYZI>("cloud_clustered.pcd", *cloud_clustered, false);
+	/*-----视口1-----*/
+	int v1(0);
+	viewer->createViewPort(0.0, 0.0, 0.5, 1.0, v1); //设置第一个视口在X轴、Y轴的最小值、最大值，取值在0-1之间
+	viewer->setBackgroundColor(0, 0, 0, v1); //设置背景颜色，0-1，默认黑色（0，0，0）
+	viewer->addText("befor_filtered", 10, 10, "v1_text", v1);
+	viewer->addPointCloud<pcl::PointXYZ>(cloud, "befor_filtered_cloud", v1);
 
-    return 0;
+	/*-----视口2-----*/
+	int v2(0);
+	viewer->createViewPort(0.5, 0.0, 1.0, 1.0, v2);
+	viewer->setBackgroundColor(0.3, 0.3, 0.3, v2);
+	viewer->addText("after_filtered", 10, 10, "v2_text", v2);
+	viewer->addPointCloud<pcl::PointXYZ>(cloud_filtered, "after_filtered_cloud", v2);
+
+	/*-----设置相关属性-----*/
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "befor_filtered_cloud", v1);
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1, 0, 0, "befor_filtered_cloud", v1);
+
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "after_filtered_cloud", v2);
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 0, 1, 0, "after_filtered_cloud", v2);
+
+	while (!viewer->wasStopped())
+	{
+		viewer->spinOnce(100);
+		boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+	}
+
+	//================================= 滤波前后对比可视化 ================================= ↑
+
+	return 0;
 }
