@@ -1,4 +1,5 @@
 #include <iostream>
+#include <time.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/visualization/cloud_viewer.h>
@@ -15,7 +16,7 @@ int main()
 	pcl::PCDReader reader;
 	reader.read("1.pcd", *cloud);
 	cout << "\t\t<读入点云信息>\n" << *cloud << endl;
-
+    clock_t start_ms = clock();
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //滤波算法
 	///体素滤波器点云下采样
@@ -25,7 +26,8 @@ int main()
 	vg.setLeafSize(0.05f, 0.05f, 0.05f);	//设置体素大小
 	vg.filter(*cloud_filtered);			//执行滤波，保存滤波结果于cloud_filtered
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    clock_t end_ms = clock();
+    std::cout << "filter time cost:" << double(end_ms - start_ms) / CLOCKS_PER_SEC << " s" << std::endl;
 
 	///保存下采样点云
 	cout << "->正在保存下采样点云..." << endl;
