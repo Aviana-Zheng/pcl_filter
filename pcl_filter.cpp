@@ -1,7 +1,8 @@
 #include <iostream>
 #include <time.h>
 #include <pcl/io/pcd_io.h>
-#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/random_sample.h>
+#include <pcl/filters/impl/random_sample.hpp>
 #include <pcl/visualization/cloud_viewer.h>
 
 using namespace std;
@@ -19,12 +20,12 @@ int main()
     clock_t start_ms = clock();
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //滤波算法
-	///体素滤波器点云下采样
-	cout << "->正在体素下采样..." << endl;
-	pcl::VoxelGrid<pcl::PointXYZ> vg;		//创建滤波器对象
-	vg.setInputCloud(cloud);				//设置待滤波点云
-	vg.setLeafSize(0.05f, 0.05f, 0.05f);	//设置体素大小
-	vg.filter(*cloud_filtered);			//执行滤波，保存滤波结果于cloud_filtered
+	cout << "->正在进行RandomSample..." << endl;
+	pcl::RandomSample<pcl::PointXYZ> rs;	//创建滤波器对象
+	rs.setInputCloud(cloud);				//设置待滤波点云
+	rs.setSample(2939);					//设置下采样点云的点数,同ApproximateVoxelGrid对比，设置2939个点
+	//rs.setSeed(1);						//设置随机函数种子点
+	rs.filter(*cloud_filtered);					//执行下采样滤波，保存滤波结果于cloud_sub
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     clock_t end_ms = clock();
     std::cout << "filter time cost:" << double(end_ms - start_ms) / CLOCKS_PER_SEC << " s" << std::endl;
